@@ -2145,19 +2145,7 @@ void set_vtx_param() {
     }
 
     if (g_IS_ARMED && !g_IS_ARMED_last) {
-        // Power_Auto
-        if (vtx_pit_save == PIT_0MW) {
-            if (TEAM_RACE)
-                ;
-            else {
-                // exit 0mW
-                Init_6300RF(RF_FREQ, RF_POWER);
-                DM6300_AUXADC_Calib();
-                cur_pwr = RF_POWER;
-                vtx_pit = PIT_OFF;
-                vtx_pit_save = PIT_OFF;
-            }
-        } else if (PIT_MODE || LP_MODE) {
+        if (LP_MODE) {
 // exit pitmode or lp_mode
 #ifndef VIDEO_PAT
 #if defined HDZERO_FREESTYLE_V1 || HDZERO_FREESTYLE_V2
