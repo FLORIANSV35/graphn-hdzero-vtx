@@ -42,6 +42,7 @@ uint8_t RF_POWER = 0;
 uint8_t RF_FREQ = 0;
 uint8_t LP_MODE = 0;
 uint8_t PIT_MODE = 0;
+uint8_t pit_setup = PIT_SETUP_0MW;
 uint8_t OFFSET_25MW = 0; // 0~10 -> 0~10    11~20 -> -1~-10
 uint8_t TEAM_RACE = 0;
 uint8_t BAUDRATE = 0;
@@ -352,6 +353,7 @@ void Setting_Save() {
         err |= I2C_Write8_Wait(10, ADDR_EEPROM, EEP_ADDR_RF_POWER, RF_POWER);
         err |= I2C_Write8_Wait(10, ADDR_EEPROM, EEP_ADDR_LPMODE, LP_MODE);
         err |= I2C_Write8_Wait(10, ADDR_EEPROM, EEP_ADDR_PITMODE, PIT_MODE);
+        err |= I2C_Write8_Wait(10, ADDR_EEPROM, EEP_ADDR_PIT_SETUP, pit_setup);
         err |= I2C_Write8_Wait(10, ADDR_EEPROM, EEP_ADDR_25MW, OFFSET_25MW);
         err |= I2C_Write8_Wait(10, ADDR_EEPROM, EEP_ADDR_TEAM_RACE, TEAM_RACE);
         err |= I2C_Write8_Wait(10, ADDR_EEPROM, EEP_ADDR_SHORTCUT, SHORTCUT);
@@ -363,6 +365,7 @@ void CFG_Back() {
     RF_POWER = (RF_POWER > POWER_MAX) ? 0 : RF_POWER;
     LP_MODE = (LP_MODE > 2) ? 0 : LP_MODE;
     PIT_MODE = (PIT_MODE > PIT_0MW) ? PIT_OFF : PIT_MODE;
+    pit_setup = (pit_setup == PIT_SETUP_1MW) ? PIT_SETUP_1MW : PIT_SETUP_0MW; // a byte never written (0xFF) = 0mW
     OFFSET_25MW = (OFFSET_25MW > 20) ? 0 : OFFSET_25MW;
     TEAM_RACE = (TEAM_RACE > 2) ? 0 : TEAM_RACE;
     SHORTCUT = (SHORTCUT > 1) ? 0 : SHORTCUT;
@@ -443,6 +446,7 @@ void GetVtxParameter() {
         RF_POWER = I2C_Read8(ADDR_EEPROM, EEP_ADDR_RF_POWER);
         LP_MODE = I2C_Read8(ADDR_EEPROM, EEP_ADDR_LPMODE);
         PIT_MODE = I2C_Read8(ADDR_EEPROM, EEP_ADDR_PITMODE);
+        pit_setup = I2C_Read8(ADDR_EEPROM, EEP_ADDR_PIT_SETUP);
         OFFSET_25MW = I2C_Read8(ADDR_EEPROM, EEP_ADDR_25MW);
         TEAM_RACE = I2C_Read8(ADDR_EEPROM, EEP_ADDR_TEAM_RACE);
         SHORTCUT = I2C_Read8(ADDR_EEPROM, EEP_ADDR_SHORTCUT);
@@ -1555,6 +1559,7 @@ void reset_config() {
     RF_POWER = 0;
     LP_MODE = 0;
     PIT_MODE = 0;
+    pit_setup = PIT_SETUP_0MW;
     OFFSET_25MW = 0;
     TEAM_RACE = 0;
     BAUDRATE = 0;
@@ -1563,6 +1568,7 @@ void reset_config() {
     I2C_Write8_Wait(10, ADDR_EEPROM, EEP_ADDR_RF_POWER, RF_POWER);
     I2C_Write8_Wait(10, ADDR_EEPROM, EEP_ADDR_LPMODE, LP_MODE);
     I2C_Write8_Wait(10, ADDR_EEPROM, EEP_ADDR_PITMODE, PIT_MODE);
+    I2C_Write8_Wait(10, ADDR_EEPROM, EEP_ADDR_PIT_SETUP, pit_setup);
     I2C_Write8_Wait(10, ADDR_EEPROM, EEP_ADDR_25MW, OFFSET_25MW);
     I2C_Write8_Wait(10, ADDR_EEPROM, EEP_ADDR_TEAM_RACE, TEAM_RACE);
     I2C_Write8_Wait(10, ADDR_EEPROM, EEP_ADDR_BAUDRATE, BAUDRATE);

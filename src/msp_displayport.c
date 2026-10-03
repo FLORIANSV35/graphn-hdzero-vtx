@@ -37,6 +37,7 @@ uint8_t vtx_channel;
 uint8_t vtx_power;
 uint8_t vtx_lp;
 uint8_t vtx_pit;
+static uint8_t vtx_pit_setup = PIT_SETUP_0MW; // the menu's working copy of pit_setup
 uint8_t vtx_pit_save = PIT_OFF;
 uint8_t vtx_offset = 0;
 uint8_t vtx_team_race = 0;
@@ -1185,6 +1186,7 @@ void parse_vtx_params(uint8_t isMSP_V2) {
     uint8_t nxt_ch = INVALID_CHANNEL;
     uint8_t nxt_pwr;
     uint8_t nxt_pit;
+    uint8_t in_pit0 = 0;
     uint8_t needSaveEEP = 0;
 
     if (SA_lock || tramp_lock || (isMSP_V2 && init_table_supported)) {
@@ -1243,37 +1245,66 @@ void parse_vtx_params(uint8_t isMSP_V2) {
         return;
     }
 
-    if ((nxt_pwr != (POWER_MAX + 1)) && !dm6300_init_done) {
-        Init_6300RF(RF_FREQ, RF_POWER);
+    // graphn: the VTX menu's PIT_SETUP says what a pit mode asked by the flight controller does: 0mW (RF off,
+    // the default) or the stock 1mW pit power. With 0mW, PIT_MODE holds PIT_0MW, the same value the old 0mW
+    // pit mode used, so it is also what is saved and applied at the next boot. The RF stays off until the
+    // flight controller leaves pit mode.
+    if (nxt_pit && pit_setup == PIT_SETUP_0MW) {
+        if (PIT_MODE != PIT_0MW || cur_pwr != (POWER_MAX + 2)) {
+            PIT_MODE = PIT_0MW;
+            WriteReg(0, 0x8F, 0x10); // 5680 reset low (image tx off).
+            dm6300_init_done = 0;
+            cur_pwr = POWER_MAX + 2;
+            vtx_pit_save = PIT_0MW;
+            vtx_pit = PIT_0MW;
+            temp_err = 1;
+            needSaveEEP = 1;
+        }
+        in_pit0 = 1;
+    }
+
+    if ((nxt_pwr != (POWER_MAX + 1)) && !dm6300_init_done && !in_pit0) {
+        if (PIT_MODE == PIT_0MW) {
+            // Leaving the 0mW pit mode: bring the RF up at the pit power first (the state the 1mW pit mode
+            // used to leave from); the exit below then sets the real power, with its usual limits.
+            Init_6300RF(RF_FREQ, POWER_MAX + 1);
+            cur_pwr = POWER_MAX + 1;
+        } else {
+            Init_6300RF(RF_FREQ, RF_POWER);
+        }
         DM6300_AUXADC_Calib();
     }
 
-    if (nxt_pit != PIT_MODE) {
-        PIT_MODE = nxt_pit;
-        if (PIT_MODE) {
-            DM6300_SetPower(POWER_MAX + 1, RF_FREQ, pwr_offset);
-            cur_pwr = POWER_MAX + 1;
-            vtx_pit_save = PIT_MODE;
-        } else {
+    if (nxt_pit && !in_pit0) { // 1mW pit mode (PIT_SETUP 1MW)
+        if (PIT_MODE != PIT_P1MW) {
+            PIT_MODE = PIT_P1MW;
+            if (dm6300_init_done) {
+                DM6300_SetPower(POWER_MAX + 1, RF_FREQ, pwr_offset);
+                cur_pwr = POWER_MAX + 1;
+            }
+            vtx_pit_save = PIT_P1MW;
+            needSaveEEP = 1;
+        }
+    } else if (!nxt_pit && PIT_MODE != PIT_OFF) { // the flight controller left pit mode
+        PIT_MODE = PIT_OFF;
 #ifndef VIDEO_PAT
 #if defined HDZERO_FREESTYLE_V1 || HDZERO_FREESTYLE_V2
-            if ((RF_POWER == 3) && !g_IS_ARMED)
-                pwr_lmt_done = 0;
-            else
+        if ((RF_POWER == 3) && !g_IS_ARMED)
+            pwr_lmt_done = 0;
+        else
 #endif
 #endif
-                if (nxt_pwr == (POWER_MAX + 1)) {
-                WriteReg(0, 0x8F, 0x10); // 5680 reset low (image tx off).
-                dm6300_init_done = 0;
-                cur_pwr = POWER_MAX + 2;
-                vtx_pit_save = PIT_0MW;
-                vtx_pit = PIT_0MW;
-                temp_err = 1;
-            } else {
-                DM6300_SetPower(RF_POWER, RF_FREQ, pwr_offset);
-                cur_pwr = RF_POWER;
-                vtx_pit_save = PIT_MODE;
-            }
+            if (nxt_pwr == (POWER_MAX + 1)) {
+            WriteReg(0, 0x8F, 0x10); // 5680 reset low (image tx off).
+            dm6300_init_done = 0;
+            cur_pwr = POWER_MAX + 2;
+            vtx_pit_save = PIT_0MW;
+            vtx_pit = PIT_0MW;
+            temp_err = 1;
+        } else {
+            DM6300_SetPower(RF_POWER, RF_FREQ, pwr_offset);
+            cur_pwr = RF_POWER;
+            vtx_pit_save = PIT_MODE;
         }
         needSaveEEP = 1;
     }
@@ -1300,6 +1331,8 @@ void parse_vtx_params(uint8_t isMSP_V2) {
                 vtx_pit = PIT_0MW;
                 temp_err = 1;
             }
+        } else if (nxt_pwr <= POWER_MAX && in_pit0) {
+            RF_POWER = nxt_pwr; // 0mW pit mode: remember the power, the RF stays off
         } else if (nxt_pwr <= POWER_MAX) {
             RF_POWER = nxt_pwr;
 
@@ -1678,7 +1711,7 @@ void update_cms_menu(uint16_t roll, uint16_t pitch, uint16_t yaw, uint16_t throt
 
                 case VTX_MENU_LP_MODE:
                     if (VirtualBtn == BTN_DOWN)
-                        vtx_menu_state = VTX_MENU_PIT_MODE;
+                        vtx_menu_state = VTX_MENU_PIT_SETUP;
                     else if (VirtualBtn == BTN_UP)
                         vtx_menu_state = VTX_MENU_POWER;
                     else if (VirtualBtn == BTN_LEFT) {
@@ -1697,25 +1730,17 @@ void update_cms_menu(uint16_t roll, uint16_t pitch, uint16_t yaw, uint16_t throt
                     update_vtx_menu_param(vtx_menu_state);
                     break;
 
-                case VTX_MENU_PIT_MODE:
+                case VTX_MENU_PIT_SETUP:
                     if (VirtualBtn == BTN_DOWN)
                         vtx_menu_state = VTX_MENU_OFFSET_25MW;
                     else if (VirtualBtn == BTN_UP)
                         vtx_menu_state = VTX_MENU_LP_MODE;
                     else if (VirtualBtn == BTN_RIGHT) {
-                        if ((SA_lock || tramp_lock) == 0) {
-                            if (vtx_pit == PIT_0MW)
-                                vtx_pit = PIT_OFF;
-                            else
-                                vtx_pit++;
-                        }
+                        if ((SA_lock || tramp_lock) == 0)
+                            vtx_pit_setup ^= 1; // 0MW <-> 1MW
                     } else if (VirtualBtn == BTN_LEFT) {
-                        if ((SA_lock || tramp_lock) == 0) {
-                            if (vtx_pit == PIT_OFF)
-                                vtx_pit = PIT_0MW;
-                            else
-                                vtx_pit--;
-                        }
+                        if ((SA_lock || tramp_lock) == 0)
+                            vtx_pit_setup ^= 1;
                     }
                     update_vtx_menu_param(vtx_menu_state);
                     break;
@@ -1724,7 +1749,7 @@ void update_cms_menu(uint16_t roll, uint16_t pitch, uint16_t yaw, uint16_t throt
                     if (VirtualBtn == BTN_DOWN)
                         vtx_menu_state = VTX_MENU_TEAM_RACE;
                     else if (VirtualBtn == BTN_UP)
-                        vtx_menu_state = VTX_MENU_PIT_MODE;
+                        vtx_menu_state = VTX_MENU_PIT_SETUP;
                     else if (VirtualBtn == BTN_RIGHT) {
                         if (vtx_offset == 10)
                             vtx_offset = vtx_offset;
@@ -1810,6 +1835,7 @@ void update_cms_menu(uint16_t roll, uint16_t pitch, uint16_t yaw, uint16_t throt
                             LP_MODE = vtx_lp;
                             PIT_MODE = vtx_pit;
                             vtx_pit_save = vtx_pit;
+                            pit_setup = vtx_pit_setup;
                             OFFSET_25MW = vtx_offset;
                             SHORTCUT = vtx_shortcut;
                             CFG_Back();
@@ -1961,7 +1987,7 @@ void vtx_menu_init() {
     strcpy(osd_buf[2] + osd_menu_offset + 2, ">CHANNEL");
     strcpy(osd_buf[3] + osd_menu_offset + 2, " POWER");
     strcpy(osd_buf[4] + osd_menu_offset + 2, " LP_MODE");
-    strcpy(osd_buf[5] + osd_menu_offset + 2, " PIT_MODE");
+    strcpy(osd_buf[5] + osd_menu_offset + 2, " PIT_SETUP");
     strcpy(osd_buf[6] + osd_menu_offset + 2, " OFFSET_25MW");
     strcpy(osd_buf[7] + osd_menu_offset + 2, " TEAM_RACE");
     strcpy(osd_buf[8] + osd_menu_offset + 2, " SHORTCUTS");
@@ -1990,6 +2016,7 @@ void vtx_menu_init() {
     vtx_power = RF_POWER;
     vtx_lp = LP_MODE;
     vtx_pit = PIT_MODE;
+    vtx_pit_setup = pit_setup;
     vtx_offset = OFFSET_25MW;
     vtx_team_race = TEAM_RACE;
     vtx_shortcut = SHORTCUT;
@@ -2000,7 +2027,7 @@ void update_vtx_menu_param(uint8_t state) {
     uint8_t i;
     const char *powerString[] = {"   25", "  200", "  500", "  MAX"};
     const char *lowPowerString[] = {"  OFF", "   ON", "  1ST"};
-    const char *pitString[] = {"  OFF", " P1MW", "  0MW"};
+    const char *pitSetupString[] = {"  0MW", "  1MW"};
     const char *treamRaceString[] = {"  OFF", "MODE1", "MODE2"};
     const char *shortcutString[] = {"OPT_A", "OPT_B"};
     const char *cameraTypeString[] = {"UNKNOWN ", "RESERVED", "OUTDATED", "MICRO_V1", "MICRO_V2", "NANO_90 ", "MICRO_V3", "CVBS    "};
@@ -2037,7 +2064,7 @@ void update_vtx_menu_param(uint8_t state) {
 
     strcpy(osd_buf[3] + osd_menu_offset + 20, powerString[vtx_power]);
     strcpy(osd_buf[4] + osd_menu_offset + 20, lowPowerString[vtx_lp]);
-    strcpy(osd_buf[5] + osd_menu_offset + 20, pitString[vtx_pit]);
+    strcpy(osd_buf[5] + osd_menu_offset + 20, pitSetupString[vtx_pit_setup & 1]);
 
     if (vtx_offset < 10) {
         strcpy(osd_buf[6] + osd_menu_offset + 20, "     ");
@@ -2082,6 +2109,7 @@ void save_vtx_param() {
     LP_MODE = vtx_lp;
     PIT_MODE = vtx_pit;
     vtx_pit_save = vtx_pit;
+    pit_setup = vtx_pit_setup;
     OFFSET_25MW = vtx_offset;
     TEAM_RACE = vtx_team_race;
     SHORTCUT = vtx_shortcut;

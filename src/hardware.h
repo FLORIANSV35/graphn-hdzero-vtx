@@ -38,6 +38,7 @@ typedef enum {
 #define EEP_ADDR_LOWBAND_LOCK 0x8C
 #define EEP_ADDR_SHORTCUT     0x8D
 #define EEP_ADDR_CAM_RATIO    0x8E
+#define EEP_ADDR_PIT_SETUP    0x8F // graphn: what the flight controller's pit mode does, see PIT_SETUP_*
 #define EEP_ADDR_TAB3         0xA0 // 0xA0 - 0xBF
 #define EEP_ADDR_DCOC1        0xC0 // 0xC0 - 0xC4
 #define EEP_ADDR_DCOC_EN      0xC0
@@ -116,6 +117,9 @@ extern uint8_t RF_FREQ;
 extern uint8_t RF_POWER;
 extern uint8_t LP_MODE;
 extern uint8_t PIT_MODE;
+#define PIT_SETUP_0MW 0 // the flight controller's pit mode = 0mW, RF off (default)
+#define PIT_SETUP_1MW 1 // the flight controller's pit mode = 1mW pit power (stock behaviour)
+extern uint8_t pit_setup;
 extern uint8_t OFFSET_25MW;
 extern uint8_t TEAM_RACE;
 extern uint8_t KEYBOARD_ON;
