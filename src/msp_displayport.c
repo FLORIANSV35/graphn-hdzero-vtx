@@ -493,6 +493,7 @@ uint8_t get_tx_data_5680() // prepare data to VRX
 {
 #ifdef USE_TEMPERATURE_SENSOR
     uint8_t temp;
+    int16_t temp_c;
 #endif
 
     tx_buf[0] = DP_HEADER0;
@@ -566,7 +567,18 @@ uint8_t get_tx_data_5680() // prepare data to VRX
 
     tx_buf[11] = fontType; // fontType
 
-    tx_buf[12] = 0x00; // deprecated
+#ifdef USE_TEMPERATURE_SENSOR
+    // Real temperature in degrees C (1..125) for goggles that read it (graphn goggle firmware: VTX Temp on
+    // the OSD). 0 = not provided, which is what every other VTX / firmware sends in this byte.
+    temp_c = temperature >> 2;
+    if (temp_c > 125)
+        temp_c = 125;
+    else if (temp_c < 0)
+        temp_c = 0;
+    tx_buf[12] = (uint8_t)temp_c;
+#else
+    tx_buf[12] = 0x00;
+#endif
 
     tx_buf[13] = g_camera_id; // Send g_camera_id in the future to allow the VRX to resync on a camera change
 
